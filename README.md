@@ -25,19 +25,19 @@
 
 - ### Binance
 
-  ![pic1.png](https://i.imgur.com/lmCBEtB.png)
-  ![pic2.png](https://i.imgur.com/OadzJwu.png)
-  ![pic3.png](https://i.imgur.com/WTCw8QF.png)
-  ![pic4.png](https://i.imgur.com/XYyXJVv.png)
-  ![pic5.png](https://i.imgur.com/L2RI4rL.png)
-  ![pic6.png](https://i.imgur.com/VOVYbLt.png)
+  1) ![pic1.png](https://i.imgur.com/lmCBEtB.png)
+  2) ![pic2.png](https://i.imgur.com/OadzJwu.png)
+  3) ![pic3.png](https://i.imgur.com/WTCw8QF.png)
+  4) ![pic4.png](https://i.imgur.com/XYyXJVv.png)
+  5) ![pic5.png](https://i.imgur.com/L2RI4rL.png)
+  6) ![pic6.png](https://i.imgur.com/VOVYbLt.png)
 
 - ### OKX
 
-  ![pic7.png](https://i.imgur.com/T7C7vce.png)
-  ![pic8.png](https://i.imgur.com/DmDe7zc.png)
-  ![pic9.png](https://i.imgur.com/emGGl0T.png)
-  ![pic10.png](https://i.imgur.com/tHWbCJj.png)
+  1) ![pic7.png](https://i.imgur.com/T7C7vce.png)
+  2) ![pic8.png](https://i.imgur.com/DmDe7zc.png)
+  3) ![pic9.png](https://i.imgur.com/emGGl0T.png)
+  4) ![pic10.png](https://i.imgur.com/tHWbCJj.png)
 
 
 ## Вопросы и обратная связь
