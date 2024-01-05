@@ -30,15 +30,14 @@
   ![pic3.png](https://i.imgur.com/WTCw8QF.png)
   ![pic4.png](https://i.imgur.com/XYyXJVv.png)
   ![pic5.png](https://i.imgur.com/L2RI4rL.png)
-  ![pic6.png](https://i.imgur.com/L2RI4rL.png)
-  ![pic7.png](https://i.imgur.com/VOVYbLt.png)
+  ![pic6.png](https://i.imgur.com/VOVYbLt.png)
 
 - ### OKX
 
-  ![pic8.png](https://i.imgur.com/T7C7vce.png)
-  ![pic9.png](https://i.imgur.com/DmDe7zc.png)
-  ![pic10.png](https://i.imgur.com/emGGl0T.png)
-  ![pic11.png](https://i.imgur.com/tHWbCJj.png)
+  ![pic7.png](https://i.imgur.com/T7C7vce.png)
+  ![pic8.png](https://i.imgur.com/DmDe7zc.png)
+  ![pic9.png](https://i.imgur.com/emGGl0T.png)
+  ![pic10.png](https://i.imgur.com/tHWbCJj.png)
 
 
 ## Вопросы и обратная связь
