@@ -1,14 +1,9 @@
 export type Network = "ETH" | "ARBITRUM" | "BSC" | "OPTIMISM" | "ZKSYNCERA" | "BASE" | "LINEA" | "STARKNET";
 export type IExchange = "Binance" | "OKX";
-export type NetworksObject = {
-  [K in Network]: {
-    binance?: string;
-    okx?: string;
-  };
-};
 
 export interface PromptsObject {
   platform: string;
+  ticker: string;
   network: Network;
   random: boolean;
   min_value?: number;
@@ -20,6 +15,7 @@ export interface PromptsObject {
 }
 
 export interface BasicPromptsObject {
+  ticker: string;
   network: Network;
   random: boolean;
 }

@@ -1,46 +1,13 @@
 import figlet from "figlet";
 import fs from "fs";
 import chalk, { ColorName } from "chalk";
-import ccxt from "ccxt";
 import { config } from "dotenv";
 import { SingleBar } from "cli-progress";
-import { IExchange, Network, NetworksObject } from "./types.js";
+import { Network } from "./types.js";
+import {binance, okx } from "ccxt";
 config();
 
 const colors: ColorName[] = ["red", "yellow", "green", "cyan", "blue", "magenta", "white", "redBright", "yellowBright", "greenBright", "cyanBright", "blueBright", "magentaBright", "whiteBright"];
-const { BINANCE_API_KEY, BINANCE_SECRET_KEY, OKEX_API_KEY, OKEX_API_SECRET, OKEX_API_PASSWORD } = process.env;
-
-export const networks: NetworksObject = {
-  ETH: {
-    binance: "ETH",
-    okx: "ERC20",
-  },
-  ARBITRUM: {
-    binance: "ARBITRUM",
-    okx: "Arbitrum One",
-  },
-  OPTIMISM: {
-    binance: "OPTIMISM",
-    okx: "Optimism",
-  },
-  BSC: {
-    binance: "BSC",
-  },
-  BASE: {
-    binance: "BASE",
-    okx: "Base",
-  },
-  ZKSYNCERA: {
-    binance: "ZKSYNCERA",
-    okx: "zkSync Era",
-  },
-  STARKNET: {
-    okx: "Starknet",
-  },
-  LINEA: {
-    okx: "Linea",
-  },
-};
 
 export function displayAsciiTitle(titleText: string, secondaryTitle?: string) {
   return new Promise<void>((resolve, reject) => {
@@ -169,53 +136,45 @@ export function sleep(from: number, to: number) {
   });
 }
 
-export function getNetworks(exchange: IExchange) {
-  const lowercaseExchange = exchange.toLowerCase() as "binance" | "okx";
-  const selectedNetworks = Object.keys(networks).reduce((acc, network) => {
-    if (networks[network as Network][lowercaseExchange]) {
-      acc.push({
-        message: networks[network as Network][lowercaseExchange],
-        name: network,
-      });
-    }
-    return acc;
-  }, []);
+export function makeNetworks(networkList: any, exchange: "Binance" | "OKX") {
+  let networks;
 
-  return selectedNetworks;
+  switch (exchange) {
+    case "Binance":
+      networks = networkList.map((el: any) => ({ message: el.name, name: el.network }));
+      break;
+    case "OKX":
+      networks = Object.keys(networkList);
+      break;
+  }
+
+  return networks;
 }
 
-export async function createOkxWithdrawal(amount: number, network: Network, address: string) {
+export async function createOkxWithdrawal(okx: okx, amount: number, network: Network, token: string, address: string, okxCurrencies: any) {
   try {
-    const okx = new ccxt.okx({
-      enableRateLimit: true,
-      apiKey: OKEX_API_KEY,
-      secret: OKEX_API_SECRET,
-      password: OKEX_API_PASSWORD,
-    });
-    const res: any = await okx.fetchCurrencies();
-    const fee = res.ETH.networks[networks[network].okx].fee;
-    console.log(fee);
+    const fee = okxCurrencies[token].networks[network].fee;
 
-    const withdrawResponse = await okx.withdraw("ETH", amount, address, {
-      password: OKEX_API_PASSWORD,
-      network: networks[network].okx,
+    const withdrawResponse = await okx.withdraw(token, amount, address, {
+      password: process.env.OKEX_API_PASSWORD,
+      network: `${token}-${network}`,
       fee,
     });
 
-    if (withdrawResponse.info.wdId) {
-      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ETH`);
+    if (withdrawResponse.info.id) {
+      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ${token}`);
     } else {
-      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: неудачная попытка вывода ${amount} ETH -> ${withdrawResponse?.info}`);
+      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: неудачная попытка вывода ${amount} ${token} -> ${withdrawResponse?.info}`);
     }
   } catch (e) {
     let stringErr = e.message;
     if (stringErr.includes("exceeds the upper limit") || stringErr.includes("Insufficient balance")) {
       console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)} недостаточно средств.. ожидаем..`);
       await sleep(20, 60);
-      return createOkxWithdrawal(amount, network, address);
+      return createOkxWithdrawal(okx, amount, network, token, address, okxCurrencies);
     } else if (stringErr.includes("Request failed")) {
       await sleep(100, 300);
-      return createOkxWithdrawal(amount, network, address);
+      return createOkxWithdrawal(okx, amount, network, token, address, okxCurrencies);
     } else {
       console.log(`${chalk.red("[ERROR]")}: ошибка в ходе вывода с OKX:`);
       console.dir(e);
@@ -224,37 +183,31 @@ export async function createOkxWithdrawal(amount: number, network: Network, addr
   }
 }
 
-export async function createBinanceWithdrawal(amount: number, network: Network, address: string) {
+export async function createBinanceWithdrawal(binance: binance, amount: number, network: Network, token: string, address: string) {
   try {
-    const binance = new ccxt.binance({
-      apiKey: BINANCE_API_KEY,
-      secret: BINANCE_SECRET_KEY,
+    const withdrawResponse = await binance.withdraw(token, amount, address, {
+      network,
     });
 
-    const withdrawResponse = await binance.withdraw("ETH", amount, address, {
-      network: networks[network].binance,
-    });
-    console.log(withdrawResponse);
     if (withdrawResponse.info.id) {
-      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ETH`);
+      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ${token}`);
     } else {
-      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: неудачная попытка вывода ${amount} ETH`);
+      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: неудачная попытка вывода ${amount} ${token}`);
     }
   } catch (e) {
     let stringErr = e.message;
     if (stringErr.includes("exceeds the upper limit") || stringErr.includes("insufficient balance")) {
       console.log(`(${chalk.red("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: недостаточно средств`);
-      // await sleep(20, 60);
       return;
     } else if (stringErr.includes("Request failed")) {
       console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: ошибка в ходе вывода.. ожидаем..`);
       await sleep(10, 30);
-      return createBinanceWithdrawal(amount, network, address);
+      return createBinanceWithdrawal(binance, amount, network, token, address);
     } else {
       console.log(`${chalk.red("[ERROR]")}: ошибка в ходе вывода с Binance:`);
       console.dir(e);
       await sleep(20, 60);
-      return createBinanceWithdrawal(amount, network, address);
+      return createBinanceWithdrawal(binance, amount, network, token, address);
     }
   }
 }
@@ -271,6 +224,16 @@ export function getConfig() {
 }
 
 export function saveConfigToFile(config: any) {
-  const jsonConfig = JSON.stringify(config, null, 2);
+  const jsonConfig = JSON.stringify(config);
   fs.writeFileSync("config.txt", jsonConfig, "utf-8");
+}
+
+export function makeUpCurrencies(currencies: any) {
+  const currenciesSet = Object.keys(currencies).reduce((acc, symbol) => {
+    const [base, quote] = symbol.split("/");
+    acc.add(base);
+    acc.add(quote);
+    return acc;
+  }, new Set<string>());
+  return [...currenciesSet].filter(Boolean);
 }
