@@ -1,193 +1,311 @@
 import pkg from "enquirer";
-import { ValuesPromptsObject, SleepPromptsObject, BasicPromptsObject, Network, PromptsObject } from "./types.js";
-import { createBinanceWithdrawal, createOkxWithdrawal, displayAsciiTitle, getConfig, makeNetworks, randomInt, readAddressesFromFile, sleep, saveConfigToFile, makeUpCurrencies } from "./utils.js";
+import { ValuesPromptsObject, SleepPromptsObject, Prompts, ApiObject, INewApiPrompts, IExchange } from "./types.js";
+import fs from "fs";
+import { getConfig, randomInt, readAddressesFromFile, sleepFn, saveConfigToFile, decryptData, encryptData, Exchange, shuffleWallets, displayAsciiTitle, color } from "./utils.js";
 import chalk from "chalk";
-import ccxt from "ccxt";
 import { config } from "dotenv";
 const { prompt } = pkg;
 config();
 
-const { BINANCE_API_KEY, BINANCE_SECRET_KEY, OKEX_API_KEY, OKEX_API_SECRET, OKEX_API_PASSWORD } = process.env;
-
-const binance = new ccxt.binance({
-  apiKey: BINANCE_API_KEY,
-  secret: BINANCE_SECRET_KEY,
-});
-const okx = new ccxt.okx({
-  enableRateLimit: true,
-  apiKey: OKEX_API_KEY,
-  secret: OKEX_API_SECRET,
-  password: OKEX_API_PASSWORD,
-});
-
-async function fetchData() {
-  const [okxTickers, okxCurrencies, binanceTickers, binanceCurrencies]: any[] = await Promise.all([
-    (async () => makeUpCurrencies(await okx.fetchTickers()))(),
-    okx.fetchCurrencies(),
-    (async () => makeUpCurrencies(await binance.fetchTickers()))(),
-    binance.fetchCurrencies(),
-  ]);
-
-  return [okxTickers, okxCurrencies, binanceTickers, binanceCurrencies];
-}
-
 const main = async () => {
   let valuePrompts: ValuesPromptsObject,
     sleepPrompts: SleepPromptsObject,
-    useConfig: { use: boolean },
-    prompts: PromptsObject,
-    okxTickers: any,
-    okxCurrencies: any,
-    binanceTickers: any,
-    binanceCurrencies: any;
+    pass: { password: string },
+    apiKeys: ApiObject = {},
+    exName: { name: "Binance" | "OKX" | "Bybit" | "MEXC" | "Huobi" };
 
-  const accs = readAddressesFromFile("./addresses.txt");
-
-  const fetchDataPromise = fetchData().then(res => {
-    okxTickers = res[0];
-    okxCurrencies = res[1];
-    binanceTickers = res[2];
-    binanceCurrencies = res[3];
-  });
-
+  const wallets = readAddressesFromFile("./addresses.txt");
   await displayAsciiTitle("DEV in 16", "https://t.me/coderv16");
+  const encryptedKeys = fs.readFileSync("./encryptedKeys.txt", "utf-8");
 
-  await Promise.all([fetchDataPromise]);
-
-  const config = getConfig();
-
-  if (config) {
-    useConfig = await prompt({
-      type: "toggle",
-      name: "use",
-      message: "Использовать сохраненные настройки?",
-      enabled: "Да",
-      disabled: "Нет",
-    });
-  }
-
-  if (!useConfig?.use) {
-    const platform: { platform: "Binance" | "OKX" } = await prompt({
-      type: "select",
-      name: "platform",
-      message: "Выберите биржу",
-      choices: ["Binance", "OKX"],
-    });
-    const ticker: { ticker: string } = await prompt({
-      type: "autocomplete",
-      name: "ticker",
-      message: "Выберите тикер: ",
-      //@ts-ignore
-      limit: 12,
-      choices: platform.platform === "Binance" ? binanceTickers : okxTickers,
-    });
-
-    const basicPrompts: BasicPromptsObject = await prompt([
-      {
-        type: "select",
-        name: "network",
-        message: "Выберите сеть",
-        choices: platform.platform === "Binance" ? makeNetworks(binanceCurrencies[ticker.ticker].info.networkList, "Binance") : makeNetworks(okxCurrencies[ticker.ticker].networks, "OKX"),
-      },
-      {
-        type: "toggle",
-        name: "random",
-        message: "Рандомизировать кол-во выводимого токена?",
-        enabled: "Да",
-        disabled: "Нет",
-      },
-    ]);
-
-    if (basicPrompts.random) {
-      valuePrompts = await prompt([
-        {
-          type: "numeral",
-          name: "min_value",
-          message: "Введите минимальное кол-во токенов на вывод: ",
-        },
-        {
-          type: "numeral",
-          name: "max_value",
-          message: "Введите максимальное кол-во токенов на вывод: ",
-        },
-      ]);
-
-      if (valuePrompts.min_value > valuePrompts.max_value) {
-        console.log(chalk.redBright.bold("\nМинимальное кол-во токенов не может быть больше максимального\n"));
-        process.exit(1);
-      }
-    } else {
-      valuePrompts = await prompt({
-        type: "numeral",
-        name: "value",
-        message: "Введите кол-во токенов на вывод: ",
+  while (true) {
+    if (encryptedKeys) {
+      pass = await prompt({
+        type: "password",
+        name: "password",
+        message: "Введите пароль для продолжения работы",
       });
-    }
 
-    const sleepPrompt: { sleep: boolean } = await prompt({
-      type: "toggle",
-      name: "sleep",
-      message: "Установить задержку перед каждым выводом?",
-      enabled: "Да",
-      disabled: "Нет",
-    });
-
-    if (sleepPrompt.sleep) {
-      sleepPrompts = await prompt([
-        {
-          type: "numeral",
-          name: "min_sleep",
-          message: "Введите минимальное время задержки (в секундах): ",
-        },
-        {
-          type: "numeral",
-          name: "max_sleep",
-          message: "Введите максимальное время задержки (в секундах): ",
-        },
-      ]);
-
-      if (sleepPrompts.min_sleep > sleepPrompts.max_sleep) {
-        console.log(chalk.redBright.bold("\nМинимальное кол-во секунд не может быть больше максимального\n"));
-        process.exit(1);
+      const decryptedKeys = JSON.parse(decryptData(encryptedKeys, pass.password));
+      if (!decryptedKeys) {
+        console.log(chalk.red("Неверный пароль!"));
+        console.log(chalk.red("Если вы забыли пароль, очистите содержимое файла encryptedKeys.txt и добавьте api-ключи заново"));
+        continue;
       }
-    }
+      apiKeys = decryptedKeys;
+      break;
+    } else {
+      console.log(color("Придумайте пароль для шифрования api-ключей и запомните его"));
+      console.log(color("Рекомендуем не использовать простые пароли!"));
+      pass = await prompt({
+        type: "input",
+        name: "password",
+        message: "Введите пароль",
+      });
 
-    prompts = { ...platform, ...ticker, ...basicPrompts, ...valuePrompts, ...(sleepPrompt.sleep ? { ...sleepPrompts, sleep: true } : { sleep: false }) };
-    const saveConfig: { save: boolean } = await prompt({
-      type: "toggle",
-      name: "save",
-      message: "Сохранить выбранные настройки?",
-      enabled: "Да",
-      disabled: "Нет",
-    });
-    if (saveConfig.save) {
-      saveConfigToFile(prompts);
+      if (pass.password.length < 8) {
+        console.log(chalk.red("Пароль должен быть не менее 8 символов!"));
+        continue;
+      }
+      break;
     }
-  } else {
-    prompts = config;
   }
-  for (let i = 0; i < accs.length; i++) {
-    try {
-      const acc = accs[i];
-      const amount = prompts.value ?? randomInt(prompts.min_value as number, prompts.max_value as number);
-      console.log(`(${chalk.green(prompts.platform)}) ${chalk.gray("=>")} ${chalk.cyan(acc)}: заявка на вывод ${amount} ETH`);
-      switch (prompts.platform) {
-        case "Binance":
-          await createBinanceWithdrawal(binance, amount, prompts.network as Network, prompts.ticker, acc);
-          break;
-        case "OKX":
-          await createOkxWithdrawal(okx, amount, prompts.network as Network, prompts.ticker, acc, okxCurrencies);
-          break;
-      }
 
-      if (prompts.sleep && i + 1 !== accs.length) {
-        await sleep(prompts.min_sleep, prompts.max_sleep);
-      }
-    } catch (e) {
-      console.log(`${chalk.red("[ERROR]")}: ошибка в ходе вывода:`);
-      console.dir(e);
+  while (true) {
+    const { action }: { action: "Вывести средства" | "Добавить/обновить api-ключи" | "О скрипте" } = await prompt({
+      type: "select",
+      name: "action",
+      message: "Выберите действие",
+      choices: ["Вывести средства", "Добавить/обновить api-ключи", "О скрипте"],
+    });
+
+    switch (action) {
+      case "Вывести средства":
+        let useConfig: { use: boolean }, allPrompts: Prompts, exchange: Exchange;
+        const config: Prompts = getConfig();
+
+        if (config) {
+          useConfig = await prompt({
+            type: "toggle",
+            name: "use",
+            message: "Использовать сохраненные настройки?",
+            disabled: "Нет",
+            enabled: "Да",
+            initial: true,
+          });
+        }
+
+        if (!useConfig?.use) {
+          exName = await prompt({
+            type: "select",
+            name: "name",
+            message: "Выберите биржу",
+            choices: ["Binance", "OKX", "Bybit", "MEXC", "Huobi"],
+          });
+          const exchangeName = exName.name.toLowerCase() as IExchange;
+          if (!apiKeys[exchangeName]) {
+            console.log(chalk.red("Для вывода средств нужно добавить api-ключи для этой биржи!"));
+            continue;
+          }
+
+          exchange = new Exchange(exchangeName, apiKeys[exchangeName].apiKey, apiKeys[exchangeName].apiSecret, apiKeys[exchangeName].password);
+          console.log(chalk.whiteBright.bold("Загрузка токенов..."));
+          const currencies = await exchange.fetchCurrencies();
+          const { ticker }: { ticker: string } = await prompt({
+            type: "autocomplete",
+            name: "ticker",
+            message: "Выберите тикер: ",
+            //@ts-ignore
+            limit: 12,
+            choices: currencies,
+          });
+          const networks = await exchange.fetchNetworks(ticker);
+          console.log(networks);
+          const { network, random }: { network: string; random: boolean } = await prompt([
+            {
+              type: "select",
+              name: "network",
+              message: "Выберите сеть",
+              choices: networks,
+            },
+            {
+              type: "toggle",
+              name: "random",
+              message: "Рандомизировать кол-во выводимого токена?",
+              enabled: "Да",
+              disabled: "Нет",
+            },
+          ]);
+
+          const networkElem = networks.filter(el => el.name === network)[0];
+          const networkMin = parseFloat(networkElem.withdrawMin ?? networkElem.minWd ?? networkElem.minWithdrawAmt);
+          while (true) {
+            if (random) {
+              const { min }: { min: number } = await prompt({
+                type: "numeral",
+                name: "min",
+                message: "Введите минимальное кол-во токенов на вывод: ",
+              });
+
+              if (min < networkMin) {
+                console.log(chalk.redBright(`Минимальная сумма для вывода в сети ${networkElem.message.split(" (fee")[0]} на бирже составляет ${networkMin} ${ticker}!`));
+                continue;
+              }
+
+              const { max }: { max: number } = await prompt({
+                type: "numeral",
+                name: "max",
+                message: "Введите максимальное кол-во токенов на вывод: ",
+              });
+
+              if (min > max) {
+                console.log(chalk.redBright.bold("\nМинимальное кол-во токенов не может быть больше максимального\n"));
+                continue;
+              }
+
+              valuePrompts = { min_value: min, max_value: max };
+              break;
+            } else {
+              valuePrompts = await prompt({
+                type: "numeral",
+                name: "value",
+                message: "Введите кол-во токенов на вывод: ",
+              });
+
+              if (valuePrompts.value < networkMin) {
+                console.log(chalk.redBright(`Минимальная сумма для вывода в сети ${networkElem.message.split(" (fee")[0]} на бирже составляет ${networkMin} ${ticker}!`));
+                continue;
+              }
+
+              break;
+            }
+          }
+
+          const { sleep }: { sleep: boolean } = await prompt({
+            type: "toggle",
+            name: "sleep",
+            message: "Установить задержку перед каждым выводом?",
+            enabled: "Да",
+            disabled: "Нет",
+          });
+
+          if (sleep) {
+            sleepPrompts = await prompt([
+              {
+                type: "numeral",
+                name: "min_sleep",
+                message: "Введите минимальное время задержки (в секундах): ",
+              },
+              {
+                type: "numeral",
+                name: "max_sleep",
+                message: "Введите максимальное время задержки (в секундах): ",
+              },
+            ]);
+
+            if (sleepPrompts.min_sleep > sleepPrompts.max_sleep) {
+              console.log(chalk.redBright.bold("\nМинимальное кол-во секунд не может быть больше максимального\n"));
+              process.exit(1);
+            }
+          }
+
+          const { shuffle }: { shuffle: boolean } = await prompt({
+            type: "toggle",
+            name: "shuffle",
+            message: "Перемешать адреса для вывода?",
+            enabled: "Да",
+            disabled: "Нет",
+            initial: true,
+          });
+
+          allPrompts = { exName: exName.name, ticker, ...valuePrompts, network, random, shuffle, ...(sleep ? { ...sleepPrompts, sleep: true } : { sleep: false }) };
+          const { save }: { save: boolean } = await prompt({
+            type: "toggle",
+            name: "save",
+            message: "Сохранить выбранные настройки?",
+            enabled: "Да",
+            disabled: "Нет",
+          });
+          if (save) {
+            saveConfigToFile(allPrompts);
+          }
+        } else {
+          const exchangeName = config.exName.toLowerCase() as IExchange;
+          if (!apiKeys[exchangeName] || !apiKeys[exchangeName].apiSecret) {
+            console.log(chalk.red("Для вывода средств нужно добавить api-ключи для этой биржи!"));
+            continue;
+          }
+
+          exchange = new Exchange(config.exName.toLowerCase() as IExchange, apiKeys[exchangeName].apiKey, apiKeys[exchangeName].apiSecret, apiKeys[exchangeName].password);
+          allPrompts = config;
+        }
+
+        if (!wallets) {
+          console.log(color("Не удалось загрузить адреса кошельков!"));
+          console.log(color(`Проверьте корректность ввода в файле ${chalk.cyan.italic("addresses.txt ")}`));
+        }
+        const accs = allPrompts.shuffle ? shuffleWallets(wallets) : wallets;
+        console.log(
+          "\n",
+          color(
+            `
+[Информация] Настройки: 
+Биржа: ${chalk.cyan.bold(exName.name)}
+Токен: ${chalk.cyan.bold(allPrompts.ticker)}
+Сеть: ${chalk.cyan.bold(allPrompts.network)}
+Кол-во токенов: ${allPrompts.value ? chalk.cyan.bold(allPrompts.value) : `${chalk.cyan.bold(allPrompts.min_value)} - ${chalk.cyan.bold(allPrompts.max_value)}`}
+${allPrompts.sleep ? `Задержка между заявками: ${chalk.cyan.bold(allPrompts.min_sleep)} - ${chalk.cyan.bold(allPrompts.max_sleep)} секунд` : ""}
+              `,
+            "\n"
+          )
+        );
+        console.log(color("Начинаю вывод..."));
+        for (let i = 0; i < accs.length; i++) {
+          const acc = accs[i];
+          const amount = +(allPrompts.value ?? +randomInt(allPrompts.min_value as number, allPrompts.max_value as number)).toFixed(8);
+          console.log(`(${chalk.green(allPrompts.exName)}) ${chalk.gray("=>")} ${chalk.cyan(acc)}: заявка на вывод ${amount} ${allPrompts.ticker}`);
+          if (allPrompts.exName === "OKX") {
+            await exchange.withdraw(amount, allPrompts.network, allPrompts.ticker, acc, 0);
+          } else {
+            await exchange.withdraw(amount, allPrompts.network, allPrompts.ticker, acc);
+          }
+          if (allPrompts.sleep && i + 1 !== accs.length) {
+            await sleepFn(allPrompts.min_sleep, allPrompts.max_sleep);
+          }
+        }
+        break;
+      case "Добавить/обновить api-ключи":
+        const prompts: INewApiPrompts = await prompt([
+          {
+            type: "select",
+            name: "exchange",
+            message: "Выберите биржу",
+            choices: ["Binance", "OKX", "Bybit", "MEXC", "Huobi"],
+          },
+          {
+            type: "password",
+            name: "apiKey",
+            message: "Введите api ключ (right click)",
+          },
+          {
+            type: "password",
+            name: "apiSecret",
+            message: "Введите api-secret ключ (right click)",
+          },
+        ]);
+        const { password }: { password: string | null } =
+          prompts.exchange === "okx"
+            ? await prompt({
+                type: "password",
+                name: "password",
+                message: "Введите API passphrase (right click)",
+              })
+            : { password: null };
+
+        apiKeys[prompts.exchange.toLowerCase() as IExchange] = {
+          apiKey: prompts.apiKey,
+          apiSecret: prompts.apiSecret,
+          password,
+        };
+        const encryptedApiKeys = encryptData(JSON.stringify(apiKeys), pass.password);
+        fs.writeFileSync("./encryptedKeys.txt", encryptedApiKeys);
+        console.log(chalk.green("API-ключи сохранены!"));
+        break;
+      case "О скрипте":
+        console.log(
+          color.bold(`
+Автор: https://t.me/coderv16
+
+Скрипт для вывода средств на кошельки.
+Для начала работы добавьте ваши кошельки в файл ${chalk.cyan.italic("./addresses.txt")} и запустите скрипт.
+При первом выводе средств требуется внести API-ключи, после чего всегда есть возможность их обновить.
+Для ввода ${chalk.cyan.italic("API-ключа")} в консоли используйте правую кнопку мыши, в IDE возможны другие комбинации клавиш.
+
+Автор ${chalk.underline("НЕ НЕСЕТ")} ответственности за последствия использования скрипта, все риски всегда на Вас.
+`)
+        );
+        break;
     }
   }
 };
-
-main();
+main().catch(() => null);

@@ -3,11 +3,14 @@ import fs from "fs";
 import chalk, { ColorName } from "chalk";
 import { config } from "dotenv";
 import { SingleBar } from "cli-progress";
-import { Network } from "./types.js";
-import {binance, okx } from "ccxt";
+import { IExchange } from "./types.js";
+import ccxt, { binance, bybit, okx, mexc, huobi, AuthenticationError, InsufficientFunds, BadRequest } from "ccxt";
+import crypto from "crypto";
 config();
 
 const colors: ColorName[] = ["red", "yellow", "green", "cyan", "blue", "magenta", "white", "redBright", "yellowBright", "greenBright", "cyanBright", "blueBright", "magentaBright", "whiteBright"];
+
+export const color = chalk.rgb(200, 162, 200);
 
 export function displayAsciiTitle(titleText: string, secondaryTitle?: string) {
   return new Promise<void>((resolve, reject) => {
@@ -83,7 +86,7 @@ export function displayAsciiTitle(titleText: string, secondaryTitle?: string) {
           clearInterval(interval);
           console.clear();
           resolve();
-        }, 2500);
+        }, 2000);
       }
     );
   });
@@ -111,7 +114,7 @@ export function randomInt(min: number, max: number): number {
   }
 }
 
-export function sleep(from: number, to: number) {
+export function sleepFn(from: number, to: number) {
   return new Promise<void>(resolve => {
     const duration = randomInt(from, to);
 
@@ -134,82 +137,6 @@ export function sleep(from: number, to: number) {
       resolve();
     }, duration * 1000);
   });
-}
-
-export function makeNetworks(networkList: any, exchange: "Binance" | "OKX") {
-  let networks;
-
-  switch (exchange) {
-    case "Binance":
-      networks = networkList.map((el: any) => ({ message: el.name, name: el.network }));
-      break;
-    case "OKX":
-      networks = Object.keys(networkList);
-      break;
-  }
-
-  return networks;
-}
-
-export async function createOkxWithdrawal(okx: okx, amount: number, network: Network, token: string, address: string, okxCurrencies: any) {
-  try {
-    const fee = okxCurrencies[token].networks[network].fee;
-
-    const withdrawResponse = await okx.withdraw(token, amount, address, {
-      password: process.env.OKEX_API_PASSWORD,
-      network: `${token}-${network}`,
-      fee,
-    });
-
-    if (withdrawResponse.info.id) {
-      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ${token}`);
-    } else {
-      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: неудачная попытка вывода ${amount} ${token} -> ${withdrawResponse?.info}`);
-    }
-  } catch (e) {
-    let stringErr = e.message;
-    if (stringErr.includes("exceeds the upper limit") || stringErr.includes("Insufficient balance")) {
-      console.log(`(${chalk.green("OKX")}) ${chalk.gray("=>")} ${chalk.cyan(address)} недостаточно средств.. ожидаем..`);
-      await sleep(20, 60);
-      return createOkxWithdrawal(okx, amount, network, token, address, okxCurrencies);
-    } else if (stringErr.includes("Request failed")) {
-      await sleep(100, 300);
-      return createOkxWithdrawal(okx, amount, network, token, address, okxCurrencies);
-    } else {
-      console.log(`${chalk.red("[ERROR]")}: ошибка в ходе вывода с OKX:`);
-      console.dir(e);
-      return;
-    }
-  }
-}
-
-export async function createBinanceWithdrawal(binance: binance, amount: number, network: Network, token: string, address: string) {
-  try {
-    const withdrawResponse = await binance.withdraw(token, amount, address, {
-      network,
-    });
-
-    if (withdrawResponse.info.id) {
-      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ${token}`);
-    } else {
-      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: неудачная попытка вывода ${amount} ${token}`);
-    }
-  } catch (e) {
-    let stringErr = e.message;
-    if (stringErr.includes("exceeds the upper limit") || stringErr.includes("insufficient balance")) {
-      console.log(`(${chalk.red("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: недостаточно средств`);
-      return;
-    } else if (stringErr.includes("Request failed")) {
-      console.log(`(${chalk.green("Binance")}) ${chalk.gray("=>")} ${chalk.cyan(address)}: ошибка в ходе вывода.. ожидаем..`);
-      await sleep(10, 30);
-      return createBinanceWithdrawal(binance, amount, network, token, address);
-    } else {
-      console.log(`${chalk.red("[ERROR]")}: ошибка в ходе вывода с Binance:`);
-      console.dir(e);
-      await sleep(20, 60);
-      return createBinanceWithdrawal(binance, amount, network, token, address);
-    }
-  }
 }
 
 export function getConfig() {
@@ -236,4 +163,204 @@ export function makeUpCurrencies(currencies: any) {
     return acc;
   }, new Set<string>());
   return [...currenciesSet].filter(Boolean);
+}
+
+export function encryptData(data: string, password: string): string {
+  const algorithm = "aes-256-cbc";
+  const key = crypto.scryptSync(password, "salt", 32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
+
+  let encryptedData = cipher.update(data, "utf-8", "hex");
+  encryptedData += cipher.final("hex");
+  return `${iv.toString("hex")}:${encryptedData}`;
+}
+
+export function decryptData(encryptedData: string, password: string): string | null {
+  try {
+    const algorithm = "aes-256-cbc";
+    const key = crypto.scryptSync(password, "salt", 32);
+
+    const [ivHex, encryptedText] = encryptedData.split(":");
+    const iv = Buffer.from(ivHex, "hex");
+
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+
+    let decryptedData = decipher.update(encryptedText, "hex", "utf-8");
+    decryptedData += decipher.final("utf-8");
+    return decryptedData;
+  } catch (e) {
+    return null;
+  }
+}
+
+function getErrorMessage(e: any): string {
+  const err = JSON.parse("{" + e.message.split("{")[1]);
+  const keysToCheck = ["retMsg", "msg", "err-msg"];
+
+  for (const key of keysToCheck) {
+    if (err[key]) {
+      return err[key];
+    }
+  }
+}
+
+export function shuffleWallets<T>(array: T[]): T[] {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j: number = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+export class Exchange {
+  public exchange: binance | okx | bybit | huobi | mexc;
+  constructor(public name: IExchange, apiKey: string, secret: string, password: string | null) {
+    this.exchange = new ccxt[name]({
+      apiKey,
+      secret,
+      ...(password ? { password } : {}),
+      enableRateLimit: true,
+      options: {
+        defaultType: "spot",
+      },
+    });
+  }
+
+  public async fetchCurrencies() {
+    try {
+      const currencies = await this.exchange.fetchTickers();
+      return makeUpCurrencies(currencies);
+    } catch (e) {
+      if (e instanceof AuthenticationError) {
+        const errMsg = getErrorMessage(e);
+        console.log(chalk.redBright("ОШИБКА АУТЕНТИФИКАЦИИ:"), color(errMsg));
+      } else {
+        delete e.stack;
+        console.log(chalk.redBright("НЕИЗВЕСТНАЯ ОШИБКА:"), e);
+      }
+    }
+  }
+
+  public async fetchNetworks(token: string): Promise<any[]> {
+    try {
+      let networks;
+      const rawNetworks: any = await this.exchange.fetchCurrencies();
+      const networkList = Object.values(rawNetworks[token].networks);
+
+      switch (this.name) {
+        case "binance":
+          networks = networkList.map((el: any) => ({ ...el, message: `${el.name} (fee: ${rawNetworks[token].fees[el.network]})`, name: el.network }));
+          break;
+        case "okx":
+          networks = [];
+
+          for (let i = 0; i < networkList.length; i++) {
+            const network: any = networkList[i];
+            if (network.active) {
+              const infoObj = network.info;
+              delete network.info;
+              networks.push({
+                ...network,
+                ...infoObj,
+                message: `${network.network} (fee ${network.fee})`,
+                name: network.network,
+              });
+            }
+          }
+          break;
+        case "bybit":
+          networks = networkList.map((el: any) => {
+            const infoObj = el.info;
+            delete el.info;
+            return {
+              ...el,
+              ...infoObj,
+              message: `${infoObj.chainType} (fee: ${infoObj.withdrawFee})`,
+              name: el.network,
+            };
+          });
+          break;
+        case "mexc":
+          networks = networkList
+            .map((el: any) => {
+              if (el?.info?.withdrawEnable) {
+                const infoObj = el.info;
+                delete el.info;
+                return {
+                  ...el,
+                  ...infoObj,
+                  message: `${el.id} (fee: ${infoObj.withdrawFee})`,
+                  name: el.network,
+                };
+              }
+            })
+            .filter(Boolean);
+          break;
+        case "huobi":
+          networks = networkList
+            .map((el: any) => {
+              if (el.withdraw) {
+                const infoObj = el.info;
+                delete el.info;
+                return {
+                  ...el,
+                  ...infoObj,
+                  message: `${infoObj.fullName} (fee: ${el.fee})`,
+                  name: el.network,
+                };
+              }
+            })
+            .filter(Boolean);
+          break;
+      }
+
+      return networks;
+    } catch (e) {
+      const errMsg = getErrorMessage(e);
+      if (errMsg) {
+        console.log(chalk.redBright("ОШИБКА ПОЛУЧЕНИЯ СЕТЕЙ:"), errMsg);
+      } else {
+        delete e.stack;
+        console.log(chalk.redBright("НЕИЗВЕСТНАЯ ОШИБКА:"), e);
+      }
+    }
+  }
+
+  public async withdraw(amount: number, network: string, token: string, address: string, fee: number | null = null): Promise<void> {
+    try {
+      let withdrawResponse;
+      if (this.name === "okx") {
+        withdrawResponse = await this.exchange.withdraw(token, amount, address, {
+          password: process.env.OKEX_API_PASSWORD,
+          network: `${token}-${network}`,
+          fee,
+        });
+      } else {
+        withdrawResponse = await this.exchange.withdraw(token, amount, address, {
+          network,
+        });
+      }
+
+      if (withdrawResponse.info.id) {
+        console.log(`(${chalk.green(this.name.toUpperCase())}) ${chalk.gray("=>")} ${chalk.cyan(address)}: успешный вывод ${amount} ${token}`);
+      }
+    } catch (e) {
+      const errMsg = getErrorMessage(e);
+      if (errMsg) {
+        if (e instanceof InsufficientFunds) {
+          console.log(chalk.redBright("ОШИБКА ВЫВОДА:"), color("Недостаточно средств"));
+          await sleepFn(10, 30);
+          return this.withdraw(amount, network, token, address, fee);
+        } else if (e instanceof BadRequest) {
+          console.log(chalk.redBright("ОШИБКА ВЫВОДА:"), color(errMsg));
+          await sleepFn(10, 30);
+          return this.withdraw(amount, network, token, address, fee);
+        }
+      }
+
+      delete e.stack;
+      console.log(chalk.redBright("НЕИЗВЕСТНАЯ ОШИБКА:"), e);
+    }
+  }
 }

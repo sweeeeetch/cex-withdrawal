@@ -1,23 +1,27 @@
-export type Network = "ETH" | "ARBITRUM" | "BSC" | "OPTIMISM" | "ZKSYNCERA" | "BASE" | "LINEA" | "STARKNET";
-export type IExchange = "Binance" | "OKX";
+export type IExchange = "binance" | "okx" | "bybit" | "mexc" | "huobi";
 
-export interface PromptsObject {
-  platform: string;
+export type ApiObject = {
+  [K in IExchange]?: { apiKey: string; apiSecret: string; password: string | null };
+};
+
+export interface INewApiPrompts {
+  exchange: "okx" | "binance";
+  apiKey: string;
+  apiSecret: string;
+}
+
+export interface Prompts {
+  exName: string;
   ticker: string;
-  network: Network;
+  value?: number;
+  network: string;
   random: boolean;
   min_value?: number;
   max_value?: number;
-  value?: number;
-  sleep: boolean;
   min_sleep?: number;
   max_sleep?: number;
-}
-
-export interface BasicPromptsObject {
-  ticker: string;
-  network: Network;
-  random: boolean;
+  sleep: boolean;
+  shuffle: boolean;
 }
 
 export interface ValuesPromptsObject {
