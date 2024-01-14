@@ -36,7 +36,7 @@ const main = async () => {
       break;
     } else {
       console.log(color("Придумайте пароль для шифрования api-ключей и запомните его"));
-      console.log(color("Рекомендуем не использовать простые пароли!"));
+      console.log(color("Рекомендуется не использовать простые пароли!"));
       pass = await prompt({
         type: "input",
         name: "password",
