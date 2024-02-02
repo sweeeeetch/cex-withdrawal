@@ -100,7 +100,6 @@ const main = async () => {
             choices: currencies,
           });
           const networks = await exchange.fetchNetworks(ticker);
-          console.log(networks);
           const { network, random }: { network: string; random: boolean } = await prompt([
             {
               type: "select",
