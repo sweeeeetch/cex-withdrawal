@@ -209,14 +209,15 @@ const main = async () => {
             saveConfigToFile(allPrompts);
           }
         } else {
+          allPrompts = config;
           const exchangeName = config.exName.toLowerCase() as IExchange;
+
           if (!apiKeys[exchangeName] || !apiKeys[exchangeName].apiSecret) {
             console.log(chalk.red("Для вывода средств нужно добавить api-ключи для этой биржи!"));
             continue;
           }
 
           exchange = new Exchange(config.exName.toLowerCase() as IExchange, apiKeys[exchangeName].apiKey, apiKeys[exchangeName].apiSecret, apiKeys[exchangeName].password);
-          allPrompts = config;
         }
 
         if (!wallets) {
@@ -229,7 +230,7 @@ const main = async () => {
           color(
             `
 [Информация] Настройки: 
-Биржа: ${chalk.cyan.bold(exName.name)}
+Биржа: ${chalk.cyan.bold(allPrompts.exName)}
 Токен: ${chalk.cyan.bold(allPrompts.ticker)}
 Сеть: ${chalk.cyan.bold(allPrompts.network)}
 Кол-во токенов: ${allPrompts.value ? chalk.cyan.bold(allPrompts.value) : `${chalk.cyan.bold(allPrompts.min_value)} - ${chalk.cyan.bold(allPrompts.max_value)}`}
